@@ -15,7 +15,8 @@
 #include <ctime>
 #include <vector>
 
-#define MAX (100000)
+#define MAX (262145)
+# max=262144=64*64*64
 
 
 using namespace std;
