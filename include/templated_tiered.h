@@ -27,6 +27,7 @@
 #include <vector>
 #include <cstring>
 #include <ctime>
+#include <list>
 
 #include <iostream>
 #include <cmath>
@@ -45,6 +46,19 @@
 #define WRAP(a,b) (((a) + (b)) % (b))
 
 using namespace std;
+size_t myPow(int x, int p) {
+    if (p == 0) return 1;
+    if (p == 1) return x;
+
+    int tmp = myPow(x, p/2);
+    if (p%2 == 0) return tmp * tmp;
+    else return x * tmp * tmp;
+}
+size_t doubleTimes = 0;
+static size_t totalHeight;
+size_t doubleCap(size_t height) {
+    return myPow(myPow(2, totalHeight-height), doubleTimes);
+}
 
 namespace Seq
 {
@@ -77,26 +91,29 @@ namespace Seq
     };
 
     template <size_t Num>
-    struct Pow {
-       enum { value = Pow<Num - 1>::value * 2 };
+    struct Pow2 {
+       enum { value = Pow2<Num - 1>::value * 2 };
     };
 
     template <>
-    struct Pow<0> {
+    struct Pow2<0> {
        enum { value = 1 };
     };
 
-    struct LayerEnd { typedef LayerEnd child; enum { width = 0, capacity = 0, height = 0, nodes = 0, depth = 0 }; };
+    struct LayerEnd { typedef LayerEnd child;
+    enum { width = 0, capacity = 0, height = 0, nodes = 0, depth = 0, twopower = Pow2<height+1>::value  };
+    };
 
     template <size_t Width, typename NextType = LayerEnd>
     struct Layer { 
-        enum { width = Width, capacity = NextType::capacity * Width, height = NextType::height + 1, nodes = NextType::nodes * Width + 1 };
+        enum { width = Width, capacity = NextType::capacity * Width, height = NextType::height + 1,
+                nodes = NextType::nodes * Width + 1, twopower = Pow2<height+1>::value  };
         typedef NextType child;
     };
 
     template <size_t Width>
     struct Layer<Width, LayerEnd> { 
-        enum { width = Width, capacity = Width, height = 0, nodes = 1 };
+        enum { width = Width, capacity = Width, height = 0, nodes = 1, twopower = Pow2<height+1>::value };
         typedef LayerEnd child;
     };
 
@@ -108,13 +125,14 @@ namespace Seq
         enum { 
             width = Childs::width, 
             capacity = Childs::capacity, 
-            height = Childs::height, 
+            height = Childs::height,
+            twopower = Pow2<height+1>::value,
             nodes = Childs::nodes, 
             depth = Parents::height, 
             leaves = (unsigned long long)parent::width * parent::leaves, 
             top_nodes = parent::top_nodes + leaves,
             bit_width = Math<capacity>::log,
-            offsets_per = Pow<Math<sizeof(size_t) * 8 / bit_width>::logdown>::value,
+            offsets_per = Pow2<Math<sizeof(size_t) * 8 / bit_width>::logdown>::value,
             top_width = parent::top_width + (leaves + offsets_per - 1) / offsets_per
         };
     };
@@ -129,7 +147,9 @@ namespace Seq
         typedef LayerItr<Layer<Childs::width, LayerEnd>, typename Childs::child> child;
         typedef FakeParent parent;
 
-        enum { width = Childs::width, capacity = Childs::capacity, height = Childs::height, nodes = Childs::nodes, depth = 0, leaves = 1, top_nodes = 1, bit_width = Math<capacity>::log, offsets_per = 1, top_width = 1 };
+        enum { width = Childs::width, capacity = Childs::capacity, height = Childs::height,
+                nodes = Childs::nodes, depth = 0, leaves = 1, top_nodes = 1, bit_width = Math<capacity>::log,
+                offsets_per = 1, top_width = 1, twopower = Pow2<height+1>::value };
     };
 
     template <class T, size_t width>
@@ -200,7 +220,13 @@ namespace Seq
 
                 const T& operator[](size_t idx) const;
                 void randomize();
-        };
+
+        void drawTree();
+
+        void setTotalHeight();
+
+        void drawString();
+    };
 
 };
 #endif
@@ -347,6 +373,61 @@ namespace Seq
             auto child = get_child(addr, idx/ Layer::child::capacity);
             return helper<T, typename Layer::child>::get(child, idx, info);
         }
+        static size_t get_leaf(size_t addr, size_t idx, Info info) {
+            idx = (idx + get_offset(addr, info)) % Layer::capacity;
+            auto child = get_child(addr, idx/ Layer::child::capacity);
+            return helper<T, typename Layer::child>::get_leaf(child, idx, info);
+        }
+        static void drawTree(size_t idx, list<size_t>&lst, int & rank, int & exp) {
+            size_t cur = lst.front();
+            lst.pop_front();
+            INODE * node = (INODE*) cur;
+            if (node == NULL) {
+                printf("EMPTY | ");
+                return;
+            }
+            int offset = get_offset(cur, Info{});
+            //int offset = (idx + get_offset(cur, Info{})) % Layer::capacity;
+            printf("[%d, %zu, %zu]", offset, node->size, node->id);
+            for (int i = 0; i < Layer::width; ++i) {
+                printf(" _");
+            }
+            printf(" | ");
+            for (int j = 0; j < Layer::width; ++j) {
+                auto child = get_child(cur, j % Layer::child::capacity);
+                lst.push_back(child);
+            }
+            rank++;
+            if (rank == myPow(Layer::width, exp)) {
+                rank = 0;
+                exp++;
+                printf("\n");
+            }
+            for (int k = 0; k < Layer::width; ++k) {
+                helper<T, typename Layer::child>::drawTree(idx, lst, rank, exp);
+            }
+        }
+        static int* drawString(size_t addr, size_t idx, Info info, size_t ExpectedSize, size_t& RealSize) {
+            idx = (idx + get_offset(addr, info)) % Layer::capacity;
+            int * ans = new int[ExpectedSize];
+            INODE* cur = (INODE*) addr;
+            RealSize = 0;
+            size_t thisSize = 0;
+            int ansIdx = 0;
+            for (int j = 0; j < cur->size; ++j) {
+                auto child = get_child(addr, idx / Layer::child::capacity);
+                int * re = helper<T, typename Layer::child>::drawString(child, idx, info, Layer::child::capacity, thisSize);
+                copy(re, re+int(thisSize), ans+ansIdx);
+                ansIdx += thisSize;
+                RealSize += thisSize;
+                delete []re;
+                idx = (idx+thisSize) % Layer::capacity;
+            }
+            return ans;
+        }
+        static void setTotalHeight() { // start from 1
+            totalHeight = Layer::height + 2;
+        }
 
         static bool remove_room(size_t addr, size_t idx) {
 #ifdef PPACK
@@ -414,6 +495,9 @@ namespace Seq
             T& t = get(addr, idx, info);
             T res = t;
             t = elem;
+            LNODE *leaf;
+            leaf = (LNODE *) get_leaf(addr, idx, info);
+            leaf->size++;
             return res;
         }
 
@@ -584,6 +668,9 @@ namespace Seq
             return ((LNODE *)addr)->elems[idx];
 #endif
         }
+        static size_t get_leaf(size_t addr, size_t idx, Info info) {
+            return addr;
+        }
         static size_t make_room(size_t addr, size_t idx, Info info) {
             return addr;
         }
@@ -648,7 +735,53 @@ namespace Seq
             idx = (idx + helper<T, L>::get_offset(addr, info)) % L::capacity;
             return get_elem(addr, idx, info);
         }
-
+        static int* drawString(size_t addr, size_t idx, Info info, size_t expectedSize, size_t& realSize) {
+            idx = (idx + helper<T, L>::get_offset(addr, info)) % L::capacity;
+            LNODE * node = (LNODE*)addr;
+            int * ans = new int[node->size];
+            for (int j = 0; j < node->size; ++j) {
+                size_t cur = node->elems[idx];
+                ans[j] = cur;
+                idx = (idx+1) % L::capacity;
+            }
+            realSize = node->size;
+            return ans;
+        }
+        static void expand(size_t addr, size_t idx, int * allEle, size_t allSize, size_t& startIdx) {
+            if (startIdx == allSize) {
+                LNODE* node = (LNODE*) addr;
+                delete node;
+                return;
+            }
+            LNODE* node = (LNODE*) addr;
+            node->nodewidth *= 2;
+            node->elems.clear();
+            node->elems.reserve(node->nodewidth);
+            int curIdx = 0;
+            int layerCap = L::capacity * myPow(L::twopower, doubleTimes);
+            for (; startIdx < allSize; ++startIdx) {
+                node->elems.push_back(allEle[startIdx]);
+                curIdx++;
+                if (curIdx == layerCap) {
+                    break;
+                }
+            }
+        }
+        static void drawTree(size_t idx, list<size_t>& lst, int & rank, int & exp) {
+            size_t cur = lst.front();
+            lst.pop_front();
+            INODE * node = (INODE*) cur;
+            if (node == NULL) {
+                printf("EMPTY | ");
+                return;
+            }
+            int offset = (idx + get_offset(cur, Info{})) % L::capacity;
+            printf("[%d, %zu, %zu]", offset, node->size, node->id);
+            for (int i = 0; i < L::width; ++i) {
+                printf(" %d", ((LNODE *)cur)->elems[i]);
+            }
+            printf(" | ");
+        }
         inline static T sum(size_t addr, size_t from, size_t count, Info info) {
             T s = T();
 
@@ -697,9 +830,12 @@ namespace Seq
 
 
         static T replace(T elem, size_t addr, size_t idx, Info info) {
+            LNODE *leaf;
+            leaf = (LNODE *) get_leaf(addr, idx, info);
             T& t = get(addr, idx, info);
             T res = t;
             t = elem;
+            leaf->size++;
             return res;
         }
 
@@ -859,6 +995,28 @@ namespace Seq
         void Tiered<T, Layer>::randomize() {
             helper<T, Layer>::randomize(root, size, info);
         }
-
+    TT
+    void Tiered<T, Layer>::drawString(){
+        cout<<"tiered.drawString(): ";
+        size_t realSize = 0;
+        int * s = helper<T, Layer>::drawString((size_t)root, 0, info, size, realSize);
+        for (int i = 0; i < realSize; ++i) {
+            cout<<s[i]<<" ";
+        }
+        cout<<endl;
+    }
+    TT
+    void Tiered<T, Layer>::drawTree(){
+        cout<<"tiered.drawTree():"<<endl;
+        list<size_t> lst;
+        lst.push_back((size_t)root);
+        int rank = 0, exp = 0;
+        helper<T, Layer>::drawTree(0, lst, rank, exp);
+        cout<<endl;
+    }
+    TT
+    void Tiered<T, Layer>::setTotalHeight(){
+        helper<T, Layer>::setTotalHeight();
+    }
 
 }
