@@ -36,11 +36,29 @@ int main(int argc, char * argv[])
 
     // Do random insertions
     for (int i = 0; i < MAX; i++) {
-        size_t idx = rand() % (i + 1);
-        tiered.insert(idx, i + 1);
+        //size_t idx = rand() % (i + 1);
+        tiered.insert(i, i + 1);
     }
     tiered.drawTree();
     tiered.drawString();
+
+    tiered.remove(8);
+    tiered.drawTree();
+    tiered.drawString();
+    tiered.remove(5);
+    tiered.drawTree();
+    tiered.drawString();
+    tiered.remove(3);
+    tiered.drawTree();
+    tiered.drawString();
+    tiered.insert(4,100);
+    tiered.drawTree();
+    tiered.drawString();
+
+    for (int j = 0; j < MAX-2; ++j) {
+        printf("%d ", tiered.operator[](j));
+    }
+    printf("\n");
 
     // Stop time
     clock_t end = clock();

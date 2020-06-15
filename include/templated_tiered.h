@@ -453,7 +453,7 @@ namespace Seq
             return false;
         }
 
-        static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info){
+        static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info, bool& forRemove){
             size_t idx = (from + helper<T, Layer>::get_offset(addr, info)) % Layer::capacity;
 
             while (count > 0) {
@@ -465,9 +465,15 @@ namespace Seq
 
                 if (doCount == Layer::child::capacity) {
                     helper<T, typename Layer::child>::set_offset(child, WRAP((helper<T, typename Layer::child>::get_offset(child, info)) + (goRight ? -1 : 1), Layer::child::capacity), info);
-                    elem = helper<T, typename Layer::child>::replace(elem, child, idx, info);
+                    if (forRemove) {
+                        elem = helper<T, typename Layer::child>::replaceForRemove(elem, child, idx, info);
+                        forRemove = false;
+                    } else {
+                        elem = helper<T, typename Layer::child>::replace(elem, child, idx, info);
+                    }
                 } else {
-                    elem = helper<T, typename Layer::child>::pop_push(elem, child, idx, doCount, goRight, info);
+                    elem = helper<T, typename Layer::child>::pop_push(elem, child, idx, doCount, goRight, info, forRemove);
+                    forRemove = false;
                 }
 
                 idx = WRAP(idx + (goRight ? doCount : -doCount), Layer::capacity);
@@ -490,14 +496,30 @@ namespace Seq
 
             return s;
         }
-
         static T replace(T elem, size_t addr, size_t idx, Info info) {
+            T& t = get(addr, idx, info);
+            T res = t;
+            t = elem;
+            return res;
+        }
+
+        static T replaceForInsert(T elem, size_t addr, size_t idx, Info info) {
             T& t = get(addr, idx, info);
             T res = t;
             t = elem;
             LNODE *leaf;
             leaf = (LNODE *) get_leaf(addr, idx, info);
             leaf->size++;
+            return res;
+        }
+
+        static T replaceForRemove(T elem, size_t addr, size_t idx, Info info) {
+            T& t = get(addr, idx, info);
+            T res = t;
+            t = elem;
+            LNODE *leaf;
+            leaf = (LNODE *) get_leaf(addr, idx, info);
+            leaf->size--;
             return res;
         }
 
@@ -677,7 +699,7 @@ namespace Seq
 
 #endif
 
-        static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info) {
+        static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info, bool & forRemove) {
 
             T res;
 
@@ -698,6 +720,9 @@ namespace Seq
             auto elems = ((LNODE*)addr)->elems;
 #endif
 #endif
+            if (forRemove) {
+                ((LNODE*)addr)->size--;
+            }
             if (goRight) {
                 res = elems[(from + get_offset(addr, info) + count - 1) % L::capacity];
 
@@ -828,14 +853,30 @@ namespace Seq
             return --node->size == 0;
         }
 
-
         static T replace(T elem, size_t addr, size_t idx, Info info) {
+            T& t = get(addr, idx, info);
+            T res = t;
+            t = elem;
+            return res;
+        }
+
+        static T replaceForInsert(T elem, size_t addr, size_t idx, Info info) {
             LNODE *leaf;
             leaf = (LNODE *) get_leaf(addr, idx, info);
             T& t = get(addr, idx, info);
             T res = t;
             t = elem;
             leaf->size++;
+            return res;
+        }
+
+        static T replaceForRemove(T elem, size_t addr, size_t idx, Info info) {
+            LNODE *leaf;
+            leaf = (LNODE *) get_leaf(addr, idx, info);
+            T& t = get(addr, idx, info);
+            T res = t;
+            t = elem;
+            leaf->size--;
             return res;
         }
 
@@ -907,18 +948,22 @@ namespace Seq
 
     TT
         void Tiered<T, Layer>::insert(size_t idx, T elem){
+            bool forRemove = false;
+            if (size == Layer::capacity) {
+                
+            }
 
-            assert((size < Layer::capacity));
+            //assert((size < Layer::capacity));
             assert (idx <= size);
             if (idx >= size/2) {
-                elem = helper<T, Layer>::pop_push(elem, (size_t)root, idx, size - idx, true, info);
+                elem = helper<T, Layer>::pop_push(elem, (size_t)root, idx, size - idx, true, info, forRemove);
                 helper<T, Layer>::make_room(root, size, info);
-                helper<T, Layer>::replace(elem, (size_t)root, size, info);
+                helper<T, Layer>::replaceForInsert(elem, (size_t)root, size, info);
             } else {
-                elem = helper<T, Layer>::pop_push(elem, (size_t)root, WRAP(idx - 1, Layer::capacity), idx, false, info);
+                elem = helper<T, Layer>::pop_push(elem, (size_t)root, WRAP(idx - 1, Layer::capacity), idx, false, info, forRemove);
                 helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info) - 1), Layer::capacity), info);
                 helper<T, Layer>::make_room(root, 0, info);
-                helper<T, Layer>::replace(elem, (size_t)root, 0, info);
+                helper<T, Layer>::replaceForInsert(elem, (size_t)root, 0, info);
             }
 
             size++;
@@ -971,13 +1016,15 @@ namespace Seq
 
     TT
         void Tiered<T, Layer>::remove(size_t idx) {
+            bool forRemove = true;
             if (idx >= size/2) {
                 size--;
                 T garbage = {};
-                helper<T, Layer>::pop_push(garbage, root, size, size - idx, false, info);
+                // bug in original code: size - idx should be size + 1 - idx
+                helper<T, Layer>::pop_push(garbage, root, size, size + 1 - idx, false, info, forRemove);
             } else {
                 T garbage = {};
-                helper<T, Layer>::pop_push(garbage, root, 0, idx + 1, true, info);
+                helper<T, Layer>::pop_push(garbage, root, 0, idx + 1, true, info, forRemove);
                 size--;
 
                 helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info)) + 1, Layer::capacity), info);
@@ -1007,7 +1054,7 @@ namespace Seq
     }
     TT
     void Tiered<T, Layer>::drawTree(){
-        cout<<"tiered.drawTree():"<<endl;
+        printf("tiered.drawTree() [offset, size, id] \n");
         list<size_t> lst;
         lst.push_back((size_t)root);
         int rank = 0, exp = 0;
