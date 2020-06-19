@@ -21,6 +21,14 @@
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 * SOFTWARE.
 ********************************************************************************/
+/*
+size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+*/
+
+
 #ifndef _TEMPLATED_TIERED_H_
 #define _TEMPLATED_TIERED_H_
 
@@ -56,9 +64,11 @@ size_t myPow(int x, int p) {
 }
 size_t doubleTimes = 0;
 static size_t totalHeight;
+/*
 size_t doubleCap(size_t height) {
-    return myPow(myPow(2, totalHeight-height), doubleTimes);
+    return myPow(myPow(2, height+1), doubleTimes);
 }
+ */
 
 namespace Seq
 {
@@ -155,15 +165,16 @@ namespace Seq
     template <class T, size_t width>
         class Node {
             public:
-                Node(size_t depth);
+                Node(size_t depth, size_t realWidth);
                 size_t depth;
                 size_t size = 0;
                 size_t id;
+                size_t nodewidth = width;
 #ifdef PPACK
 #else
                 size_t offset = 0;
 #endif
-                T elems[width];
+                T* elems;
         };
 
     template <class T>
@@ -172,11 +183,12 @@ namespace Seq
                 size_t depth;
                 size_t size = 0;
                 size_t id;
+                size_t nodewidth;
 #ifdef PPACK
 #else
                 size_t offset = 0;
 #endif
-                T elems[];
+                T* elems;
         };
 
     template <class T, class Layer>
@@ -218,14 +230,22 @@ namespace Seq
                 void insert(size_t idx, T elem);
                 void insert_sorted(T elem);
 
-                const T& operator[](size_t idx) const;
+                const T& Query(size_t idx) const;
                 void randomize();
-
+                T * RangeQuery(int start, int end, int & lenOfAns);
+        void initialize(int * array, size_t length);
         void drawTree();
-
         void setTotalHeight();
-
+        void expand(size_t addr, size_t idx, int *allEle, size_t allSize, size_t startIdx);
         void drawString();
+
+        void operatorAll();
+
+        void Swap(int start1, int end1, int start2, int end2);
+
+        void Move(int start, int end, int des);
+
+        void Reorder(int start, int end, T *newID);
     };
 
 };
@@ -339,9 +359,14 @@ namespace Seq
             auto childIdx = idx / Layer::child::capacity;
             if (node->elems[childIdx].child == NULL) {
 #else
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+
             auto node = (INODE*) addr;
-            idx = (idx + node->offset) % Layer::capacity;
-            auto childIdx = idx / Layer::child::capacity;
+            idx = (idx + node->offset) % layerCapacity;
+            auto childIdx = idx / childCapacity;
             if (node->elems[childIdx] == NULL) {
 #endif
                 if (Layer::height == 1) {
@@ -349,13 +374,13 @@ namespace Seq
 
                     node->elems[childIdx] = {0, (size_t)new Node<T, Layer::child::width>(0)};
 #else
-                    node->elems[childIdx] = new Node<T, Layer::child::width>(0);
+                    node->elems[childIdx] = new Node<T, Layer::child::width>(0, childwidth);
 #endif
                 } else {
 #ifdef PPACK
                     node->elems[childIdx] = {0, (size_t)new Node<Elem, Layer::child::width>(0)};
 #else
-                    node->elems[childIdx] = new Node<void*, Layer::child::width>(0);
+                    node->elems[childIdx] = new Node<void*, Layer::child::width>(0, childwidth);
 #endif
                 }
                 node->size++;
@@ -369,76 +394,232 @@ namespace Seq
         }
 #endif
         static T& get(size_t addr, size_t idx, Info info) {
-            idx = (idx + get_offset(addr, info)) % Layer::capacity;
-            auto child = get_child(addr, idx/ Layer::child::capacity);
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            //size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            //size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+            idx = (idx + get_offset(addr, info)) % layerCapacity;
+            auto child = get_child(addr, idx / childCapacity);
             return helper<T, typename Layer::child>::get(child, idx, info);
         }
         static size_t get_leaf(size_t addr, size_t idx, Info info) {
-            idx = (idx + get_offset(addr, info)) % Layer::capacity;
-            auto child = get_child(addr, idx/ Layer::child::capacity);
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            idx = (idx + get_offset(addr, info)) % layerCapacity;
+            auto child = get_child(addr, idx/ childCapacity);
             return helper<T, typename Layer::child>::get_leaf(child, idx, info);
         }
-        static void drawTree(size_t idx, list<size_t>&lst, int & rank, int & exp) {
-            size_t cur = lst.front();
-            lst.pop_front();
-            INODE * node = (INODE*) cur;
-            if (node == NULL) {
+        static void drawTree(size_t addr, list<size_t>&lst, int & rank, int & exp, int& totalHeight, int nodewidth) {
+            INODE * node = (INODE*) addr;
+            if (node == nullptr) {
                 printf("EMPTY | ");
+                rank++;
+                if (rank == myPow(nodewidth, exp)) {
+                    rank = 0;
+                    exp++;
+                    printf("\n");
+                }
                 return;
             }
-            int offset = get_offset(cur, Info{});
-            //int offset = (idx + get_offset(cur, Info{})) % Layer::capacity;
-            printf("[%d, %zu, %zu]", offset, node->size, node->id);
-            for (int i = 0; i < Layer::width; ++i) {
+            printf("[%zu, %zu, %zu]", node->offset, node->size, node->id);
+            if (totalHeight == exp) { // leaf node
+                LNODE * leaf = (LNODE*) addr;
+                int i = 0;
+                for (; i < nodewidth; ++i) {
+                    printf(" %d", leaf->elems[i]);
+                }
+                printf(" | ");
+                return;
+            }
+            for (int i = 0; i < nodewidth; ++i) {
                 printf(" _");
             }
             printf(" | ");
-            for (int j = 0; j < Layer::width; ++j) {
-                auto child = get_child(cur, j % Layer::child::capacity);
-                lst.push_back(child);
+            int j = 0;
+            for (; j < node->nodewidth; ++j) {
+                void* child = node->elems[j];// get_child(addr, j % myPow(Layer::child::capacity, doubleTimes));
+                lst.push_back(size_t (child));
             }
             rank++;
-            if (rank == myPow(Layer::width, exp)) {
+            if (rank == myPow(nodewidth, exp)) {
                 rank = 0;
                 exp++;
                 printf("\n");
             }
-            for (int k = 0; k < Layer::width; ++k) {
-                helper<T, typename Layer::child>::drawTree(idx, lst, rank, exp);
+        }
+        static void RangeQuery(size_t addr, size_t idx, Info info, T * ans, size_t& ansIdx, int expectedSize) {
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+            idx = (idx + get_offset(addr, info)) % layerCapacity;
+            INODE* cur = (INODE*) addr;
+            for (int j = 0; j < cur->size; ++j) {
+                auto child = get_child(addr, idx / childCapacity);
+                size_t oldAnsIdx = ansIdx;
+                helper<T, typename Layer::child>::RangeQuery(child, idx, info, ans, ansIdx, expectedSize);
+                size_t thisSize = ansIdx - oldAnsIdx;
+                if (ansIdx == expectedSize) {
+                    break;
+                }
+                idx = (idx+thisSize) % layerCapacity;
             }
         }
-        static int* drawString(size_t addr, size_t idx, Info info, size_t ExpectedSize, size_t& RealSize) {
-            idx = (idx + get_offset(addr, info)) % Layer::capacity;
-            int * ans = new int[ExpectedSize];
+        static void updateElems(size_t addr, size_t idx, Info info, T* newArray, size_t expectedSize, size_t& updateIdx) {
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+            idx = (idx + get_offset(addr, info)) % layerCapacity;
+            INODE* cur = (INODE*) addr;
+            for (int j = 0; j < cur->size; ++j) {
+                auto child = get_child(addr, idx / childCapacity);
+                size_t oldAnsIdx = updateIdx;
+                helper<T, typename Layer::child>::updateElems(child, idx, info, newArray, expectedSize, updateIdx);
+                size_t thisSize = updateIdx - oldAnsIdx;
+                if (updateIdx == expectedSize) {
+                    break;
+                }
+                idx = (idx+thisSize) % layerCapacity;
+            }
+        }
+        static T* drawString(size_t addr, size_t idx, Info info, size_t ExpectedSize, size_t& RealSize) {
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+            idx = (idx + get_offset(addr, info)) % layerCapacity;
+            T * ans = new int[ExpectedSize];
             INODE* cur = (INODE*) addr;
             RealSize = 0;
             size_t thisSize = 0;
             int ansIdx = 0;
             for (int j = 0; j < cur->size; ++j) {
-                auto child = get_child(addr, idx / Layer::child::capacity);
-                int * re = helper<T, typename Layer::child>::drawString(child, idx, info, Layer::child::capacity, thisSize);
+                auto child = get_child(addr, idx / childCapacity);
+                T * re = helper<T, typename Layer::child>::drawString(child, idx, info, childCapacity, thisSize);
                 copy(re, re+int(thisSize), ans+ansIdx);
                 ansIdx += thisSize;
                 RealSize += thisSize;
                 delete []re;
-                idx = (idx+thisSize) % Layer::capacity;
+                idx = (idx+thisSize) % layerCapacity;
             }
             return ans;
         }
+        static void deallocate(size_t addr) {
+            INODE* node = (INODE*) addr;
+            if (node == nullptr) {
+                return;
+            }
+            for (int i = 0; i < node->nodewidth; ++i) {
+                auto child = get_child(addr, i);
+                helper<T, typename Layer::child>::deallocate(child);
+            }
+            delete []node->elems;
+            delete node;
+        }
+        // make room for addr[idx], return addr[idx]
+        static void expandFromNull(void*& addr, int * allEle, size_t allSize, size_t& startIdx, size_t& maxID) {
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
+            if (Layer::height == 1) { // leaf parent
+                addr = new Node<T, Layer::width>(0, layerwidth); // leaf node
+            } else {
+                addr = new Node<void*, Layer::child::width>(0, childwidth); // non-leaf node
+            }
+            INODE* newNode = (INODE*) addr;
+            newNode->id = maxID;
+            maxID++;
+            for (int i = 0; i < newNode->nodewidth; ++i) {
+                //size_t childAddr = (size_t) newNode->elems[i];
+                helper<T, typename Layer::child>::expandFromNull(newNode->elems[i], allEle, allSize, startIdx, maxID);
+                newNode->size++;
+                if (startIdx == allSize) {
+                    break;
+                }
+            }
+        }
+
+        static void expand(size_t addr, size_t idx, int * allEle, size_t allSize, size_t& startIdx, size_t& maxID) {
+            INODE* node = (INODE*) addr;
+            node->id = maxID;
+            maxID++;
+            void ** newElems = new void* [node->nodewidth * 2];
+            memset(newElems, 0, sizeof(void*)*node->nodewidth * 2);
+            node->offset = 0;
+            int i = 0;
+            for (; i < node->nodewidth; ++i) {
+                auto child = get_child(addr, i);
+                newElems[i] = (void*) child;
+                helper<T, typename Layer::child>::expand(child, idx, allEle, allSize, startIdx, maxID);
+                //idx = (idx+1) % layerCap;
+                if (startIdx == allSize) {
+                    i++;
+                    break;
+                }
+            }
+            node->size = i;
+            if (startIdx == allSize) {
+                for (; i < node->nodewidth; ++i) {
+                    auto child = get_child(addr, i);
+                    helper<T, typename Layer::child>::deallocate(child);
+                }
+            } else {
+                for ( ; i < node->nodewidth; ++i) {
+                    newElems[i] = node->elems[idx];
+                    helper<T, typename Layer::child>::expandFromNull(node->elems[idx], allEle, allSize, startIdx, maxID);
+                    node->size++;
+                    if (startIdx == allSize) {
+                        break;
+                    }
+                }
+                for ( ; i < node->nodewidth * 2; ++i) {
+                    helper<T, typename Layer::child>::expandFromNull(newElems[i], allEle, allSize, startIdx, maxID);
+                    node->size++;
+                    if (startIdx == allSize) {
+                        break;
+                    }
+                }
+            }
+            node->nodewidth *= 2;
+            delete []node->elems;
+            node->elems = newElems;
+        }
+        static void expandAndInitialize(size_t addr, size_t idx) {
+            INODE* node = (INODE*) addr;
+            node->nodewidth *= 2;
+            delete []node->elems;
+            node->elems = new typename Layer::child [node->nodewidth];
+            node->offset = 0;
+            //cout<<Layer::capacity<<","<<Layer::child::capacity<<endl;
+            //cout<<Layer::height<<","<<Layer::child::height<<endl;
+            int layerCap = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            int childCap = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            //idx = (idx + get_offset(addr, Info{})) % (layerCap);
+            int i = 0;
+            for (; i < node->nodewidth; ++i) {
+                auto child = get_child(addr, i);
+                helper<T, typename Layer::child>::expandAndInitialize(child, idx);
+            }
+        }
+
         static void setTotalHeight() { // start from 1
             totalHeight = Layer::height + 2;
         }
 
         static bool remove_room(size_t addr, size_t idx) {
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t layerwidth = Layer::width * myPow(2, doubleTimes);
+            size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
 #ifdef PPACK
             auto elem = (Elem*) addr;
             auto node = (INODE*) elem;
             idx = (idx + elem->offset) % Layer::capacity;
 #else
             auto node = (INODE*) addr;
-            idx = (idx + node->offset) % Layer::capacity;
+            idx = (idx + node->offset) % layerCapacity;
 #endif
-            auto childIdx = idx / Layer::child::capacity;
+            auto childIdx = idx / childCapacity;
 
             if (helper<T, typename Layer::child>::remove_room((INODE *)node->elems[childIdx], idx)) {
                 if (Layer::height == 1) {
@@ -454,17 +635,21 @@ namespace Seq
         }
 
         static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info, bool& forRemove){
-            size_t idx = (from + helper<T, Layer>::get_offset(addr, info)) % Layer::capacity;
+            //printf("%d %d %d %d\n", Layer::height, Layer::capacity, Layer::child::height, Layer::child::capacity);
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+
+            size_t idx = (from + helper<T, Layer>::get_offset(addr, info)) % layerCapacity;
 
             while (count > 0) {
-                size_t doCount = min(count, goRight ? (Layer::child::capacity - (idx % Layer::child::capacity))
-                : (idx % Layer::child::capacity + 1));
+                size_t doCount = min(count, goRight ? (childCapacity - (idx % childCapacity))
+                : (idx % childCapacity + 1));
 
-                auto child = get_child(addr, idx / Layer::child::capacity);
+                auto child = get_child(addr, idx / childCapacity);
 
 
-                if (doCount == Layer::child::capacity) {
-                    helper<T, typename Layer::child>::set_offset(child, WRAP((helper<T, typename Layer::child>::get_offset(child, info)) + (goRight ? -1 : 1), Layer::child::capacity), info);
+                if (doCount == childCapacity) {
+                    helper<T, typename Layer::child>::set_offset(child, WRAP((helper<T, typename Layer::child>::get_offset(child, info)) + (goRight ? -1 : 1), childCapacity), info);
                     if (forRemove) {
                         elem = helper<T, typename Layer::child>::replaceForRemove(elem, child, idx, info);
                         forRemove = false;
@@ -476,7 +661,7 @@ namespace Seq
                     forRemove = false;
                 }
 
-                idx = WRAP(idx + (goRight ? doCount : -doCount), Layer::capacity);
+                idx = WRAP(idx + (goRight ? doCount : -doCount), layerCapacity);
                 count -= doCount;
             }
             return elem;
@@ -484,13 +669,15 @@ namespace Seq
 
         inline static T sum(size_t addr, size_t from, size_t count, Info info) {
             T s = T();
-            size_t idx = (from + get_offset(addr, info)) % Layer::capacity;
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+            size_t idx = (from + get_offset(addr, info)) % layerCapacity;
 
             while (count > 0) {
-                size_t doCount = min(count, Layer::child::capacity - (idx % Layer::child::capacity));
-                auto child = get_child(addr, idx / Layer::child::capacity);
+                size_t doCount = min(count, childCapacity - (idx % childCapacity));
+                auto child = get_child(addr, idx / childCapacity);
                 s += helper<T, typename Layer::child>::sum(child, idx, doCount, info);
-                idx = (idx + doCount) % Layer::capacity;
+                idx = (idx + doCount) % layerCapacity;
                 count -= doCount;
             }
 
@@ -556,14 +743,16 @@ namespace Seq
         }
 
         static void randomize(size_t addr, size_t max, Info info) {
-           for (int i = 0; i < Layer::width; i++) {
-              if (max > i * Layer::child::capacity) {
-                  helper<T, typename Layer::child>::randomize(get_child(addr, i), max - i * Layer::child::capacity , info);
+           size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+           size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
+           for (int i = 0; i < Layer::width * myPow(2, doubleTimes); i++) {
+              if (max > i * childCapacity) {
+                  helper<T, typename Layer::child>::randomize(get_child(addr, i), max - i * childCapacity, info);
               }
            }
 
-           if (max >= Layer::capacity) {
-              set_offset(addr, rand() % Layer::capacity, info);
+           if (max >= layerCapacity) {
+              set_offset(addr, rand() % layerCapacity, info);
            }
         }
     };
@@ -696,11 +885,25 @@ namespace Seq
         static size_t make_room(size_t addr, size_t idx, Info info) {
             return addr;
         }
-
+        static void expandFromNull(void*& addr, int * allEle, size_t allSize, size_t& startIdx, size_t& maxID) {
+            size_t childwidth = L::width * myPow(2, doubleTimes);
+            addr = new Node<T, L::width>(0, childwidth);
+            LNODE* node = (LNODE*) addr;
+            node->id = maxID;
+            maxID++;
+            for (int i = 0; i < node->nodewidth; ++i) {
+                node->elems[i] = allEle[startIdx];
+                startIdx++;
+                node->size++;
+                if (startIdx == allSize) {
+                    break;
+                }
+            }
+        }
 #endif
 
         static T pop_push(T elem, size_t addr, size_t from, size_t count, bool goRight, Info info, bool & forRemove) {
-
+            size_t layerCapacity = L::capacity * myPow(L::twopower, doubleTimes);
             T res;
 
 #ifdef ARRAY
@@ -724,89 +927,149 @@ namespace Seq
                 ((LNODE*)addr)->size--;
             }
             if (goRight) {
-                res = elems[(from + get_offset(addr, info) + count - 1) % L::capacity];
+                res = elems[(from + get_offset(addr, info) + count - 1) % layerCapacity];
 
-                size_t start = (from + get_offset(addr, info)) % L::capacity;
-                size_t beforeWrap = min(L::capacity - start - 1, count - 1);
+                size_t start = (from + get_offset(addr, info)) % layerCapacity;
+                size_t beforeWrap = min(layerCapacity - start - 1, count - 1);
 
                 // Move last part
                 if (beforeWrap < count - 1) {
                     memmove(&elems[1], &elems[0], (count - beforeWrap - 2) * sizeof(T));
-                    elems[0] = elems[L::capacity - 1];
+                    elems[0] = elems[layerCapacity - 1];
                 }
 
                 // Move first part
                 memmove(&elems[start + 1], &elems[start], beforeWrap * sizeof(T));
             } else {
-                res = elems[(from + get_offset(addr, info) - count + 1) % L::capacity];
+                res = elems[(from + get_offset(addr, info) - count + 1) % layerCapacity];
 
-                size_t start = (from + get_offset(addr, info)) % L::capacity;
+                size_t start = (from + get_offset(addr, info)) % layerCapacity;
                 size_t beforeWrap = min(start, count - 1);
 
                 if (beforeWrap < count - 1) {
                     size_t afterWrap = count - beforeWrap - 2;
-                    memmove(&elems[L::capacity - afterWrap - 1], &elems[L::capacity - afterWrap], afterWrap * sizeof(T));
-                    elems[L::capacity - 1] = elems[0];
+                    memmove(&elems[layerCapacity - afterWrap - 1], &elems[layerCapacity - afterWrap], afterWrap * sizeof(T));
+                    elems[layerCapacity - 1] = elems[0];
                 }
 
                 memmove(&elems[start - beforeWrap], &elems[start - beforeWrap + 1], beforeWrap * sizeof(T));
             }
 
-            elems[(from + get_offset(addr, info)) % L::capacity] = elem;
+            elems[(from + get_offset(addr, info)) % layerCapacity] = elem;
 
             return res;
         }
         static T& get(size_t addr, size_t idx, Info info) {
-            idx = (idx + helper<T, L>::get_offset(addr, info)) % L::capacity;
+            size_t layerCapacity = L::capacity * myPow(L::twopower, doubleTimes);
+            idx = (idx + helper<T, L>::get_offset(addr, info)) % layerCapacity;
             return get_elem(addr, idx, info);
         }
-        static int* drawString(size_t addr, size_t idx, Info info, size_t expectedSize, size_t& realSize) {
-            idx = (idx + helper<T, L>::get_offset(addr, info)) % L::capacity;
+        static void updateElems(size_t addr, size_t idx, Info info, T* newArray, size_t expectedSize, size_t& updateIdx) {
+            size_t layerCapacity = L::capacity * myPow(L::twopower, doubleTimes);
+            idx = (idx + helper<T, L>::get_offset(addr, info)) % layerCapacity;
             LNODE * node = (LNODE*)addr;
-            int * ans = new int[node->size];
+            for (int j = 0; j < node->size; ++j) {
+                node->elems[idx] = newArray[updateIdx];
+                updateIdx++;
+                if (updateIdx == expectedSize) {
+                    break;
+                }
+                idx = (idx+1) % layerCapacity;
+            }
+            //return ans;
+        }
+        static void RangeQuery(size_t addr, size_t idx, Info info, T * ans, size_t& ansIdx, int expectedSize) {
+            size_t layerCapacity = L::capacity * myPow(L::twopower, doubleTimes);
+            idx = (idx + helper<T, L>::get_offset(addr, info)) % layerCapacity;
+            LNODE * node = (LNODE*)addr;
+            for (int j = 0; j < node->size; ++j) {
+                size_t cur = node->elems[idx];
+                ans[ansIdx] = cur;
+                ansIdx++;
+                if (ansIdx == expectedSize) {
+                    break;
+                }
+                idx = (idx+1) % layerCapacity;
+            }
+        }
+        static T* drawString(size_t addr, size_t idx, Info info, size_t expectedSize, size_t& realSize) {
+            size_t layerCapacity = L::capacity * myPow(L::twopower, doubleTimes);
+            idx = (idx + helper<T, L>::get_offset(addr, info)) % layerCapacity;
+            LNODE * node = (LNODE*)addr;
+            T * ans = new T[node->size];
             for (int j = 0; j < node->size; ++j) {
                 size_t cur = node->elems[idx];
                 ans[j] = cur;
-                idx = (idx+1) % L::capacity;
+                idx = (idx+1) % layerCapacity;
             }
             realSize = node->size;
             return ans;
         }
-        static void expand(size_t addr, size_t idx, int * allEle, size_t allSize, size_t& startIdx) {
+        static void expand(size_t addr, size_t idx, int * allEle, size_t allSize, size_t& startIdx, size_t& maxID) {
             if (startIdx == allSize) {
-                LNODE* node = (LNODE*) addr;
+                LNODE *node = (LNODE *) addr;
+                delete[]node->elems;
                 delete node;
                 return;
             }
-            LNODE* node = (LNODE*) addr;
+            LNODE *node = (LNODE *) addr;
+            node->id = maxID;
+            maxID++;
             node->nodewidth *= 2;
-            node->elems.clear();
-            node->elems.reserve(node->nodewidth);
+            delete[]node->elems;
+            node->elems = new T[node->nodewidth];
+            memset(node->elems, 0, sizeof(T) * node->nodewidth);
+            node->offset = 0;
             int curIdx = 0;
             int layerCap = L::capacity * myPow(L::twopower, doubleTimes);
-            for (; startIdx < allSize; ++startIdx) {
-                node->elems.push_back(allEle[startIdx]);
-                curIdx++;
-                if (curIdx == layerCap) {
-                    break;
-                }
+            for (; startIdx < allSize && curIdx < layerCap; ++startIdx, ++curIdx) {
+                node->elems[curIdx] = allEle[startIdx];
             }
+            node->size = curIdx;
         }
+
+        static void deallocate(size_t addr) {
+            LNODE* node = (LNODE*) addr;
+            if (node == nullptr) {
+                return;
+            }
+            delete []node->elems;
+            delete node;
+        }
+
+        static void expandAndInitialize(size_t addr, size_t idx) {
+            INODE* node = (INODE*) addr;
+            node->nodewidth *= 2;
+            delete []node->elems;
+            node->elems = new void* [node->nodewidth];
+            node->offset = 0;
+            //cout<<Layer::capacity<<","<<Layer::child::capacity<<endl;
+            //cout<<Layer::height<<","<<Layer::child::height<<endl;
+            //int layerCap = L::capacity * myPow(L::twopower, doubleTimes);
+            //int childCap = L::child::capacity * myPow(L::child::twopower, doubleTimes);
+        }
+
+        /*
         static void drawTree(size_t idx, list<size_t>& lst, int & rank, int & exp) {
             size_t cur = lst.front();
             lst.pop_front();
-            INODE * node = (INODE*) cur;
+            LNODE * node = (LNODE *) cur;
             if (node == NULL) {
                 printf("EMPTY | ");
                 return;
             }
             int offset = (idx + get_offset(cur, Info{})) % L::capacity;
             printf("[%d, %zu, %zu]", offset, node->size, node->id);
-            for (int i = 0; i < L::width; ++i) {
-                printf(" %d", ((LNODE *)cur)->elems[i]);
+            int i = 0;
+            for (; i < node->size; ++i) {
+                printf(" %d", node->elems[i]);
+            }
+            for (; i < node->nodewidth; ++i) {
+                printf(" _");
             }
             printf(" | ");
         }
+         */
         inline static T sum(size_t addr, size_t from, size_t count, Info info) {
             T s = T();
 
@@ -926,7 +1189,7 @@ namespace Seq
 #ifdef PPACK
             relem = {0, (size_t) new Node<Elem, Layer::width>(0)};
 #else
-            root = (size_t ) new Node<void*, Layer::width>(0);
+            root = (size_t ) new Node<void*, Layer::width>(0, Layer::width * myPow(2, doubleTimes));
 #endif
         }
 
@@ -935,33 +1198,47 @@ namespace Seq
 
 
     template<class T, size_t width>
-        Node<T, width>::Node(size_t depth) : depth(depth) {
-            memset(elems, 0, sizeof(T)*width);
+        Node<T, width>::Node(size_t depth, size_t realWidth) : depth(depth) {
+            elems = new T[realWidth];
+            memset(elems, 0, sizeof(T)*realWidth);
             id = ID;
             ID++;
+            nodewidth = realWidth;
         }
 
     TT
         T Tiered<T, Layer>::sum(size_t from, size_t count){
-            return helper<T, Layer>::sum((size_t)root, from, count, info);
+            return helper<T, Layer>::sum((size_t)root, from-1, count, info);
         }
 
     TT
-        void Tiered<T, Layer>::insert(size_t idx, T elem){
+        void Tiered<T, Layer>::insert(size_t idxFromOne, T elem){
             bool forRemove = false;
-            if (size == Layer::capacity) {
-                
+            size_t idx = idxFromOne-1;
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
+            if (size == layerCapacity) {
+                size_t realSize = 0;
+                //printf("before expansion\n");
+                int * allEle = helper<T, Layer>::drawString(root, 0, Info{}, size, realSize);
+                //drawTree();
+                //INODE* node = (INODE*) root;
+                expand((size_t)root, 0, allEle, realSize,0);
+                /*
+                printf("after expansion\n");
+                drawTree();
+                drawString();
+                 */
+                layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);;
             }
 
-            //assert((size < Layer::capacity));
             assert (idx <= size);
             if (idx >= size/2) {
                 elem = helper<T, Layer>::pop_push(elem, (size_t)root, idx, size - idx, true, info, forRemove);
                 helper<T, Layer>::make_room(root, size, info);
                 helper<T, Layer>::replaceForInsert(elem, (size_t)root, size, info);
             } else {
-                elem = helper<T, Layer>::pop_push(elem, (size_t)root, WRAP(idx - 1, Layer::capacity), idx, false, info, forRemove);
-                helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info) - 1), Layer::capacity), info);
+                elem = helper<T, Layer>::pop_push(elem, (size_t)root, WRAP(idx - 1, layerCapacity), idx, false, info, forRemove);
+                helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info) - 1), layerCapacity), info);
                 helper<T, Layer>::make_room(root, 0, info);
                 helper<T, Layer>::replaceForInsert(elem, (size_t)root, 0, info);
             }
@@ -986,10 +1263,10 @@ namespace Seq
         }
 
     TT
-        const T& Tiered<T, Layer>::operator[](size_t idx) const{
+        const T& Tiered<T, Layer>::Query(size_t idx) const{
             assert (idx < size);
 
-            return helper<T, Layer>::get((size_t)root, idx, info);
+            return helper<T, Layer>::get((size_t)root, idx-1, info);
         }
 
     TT
@@ -1016,6 +1293,8 @@ namespace Seq
 
     TT
         void Tiered<T, Layer>::remove(size_t idx) {
+            idx--;
+            size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
             bool forRemove = true;
             if (idx >= size/2) {
                 size--;
@@ -1027,7 +1306,7 @@ namespace Seq
                 helper<T, Layer>::pop_push(garbage, root, 0, idx + 1, true, info, forRemove);
                 size--;
 
-                helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info)) + 1, Layer::capacity), info);
+                helper<T, Layer>::set_offset(root, WRAP((helper<T, Layer>::get_offset(root, info)) + 1, layerCapacity), info);
             }
         }
 
@@ -1043,27 +1322,161 @@ namespace Seq
             helper<T, Layer>::randomize(root, size, info);
         }
     TT
+    void Tiered<T, Layer>::expand(size_t addr, size_t idx, int * allEle, size_t allSize, size_t startIdx) {
+        cout<<"tiered.expand():"<<endl;
+        doubleTimes ++;
+        size_t maxID = 0;
+        helper<T, Layer>::expand(addr, idx, allEle, allSize, startIdx, maxID);
+        cout<<endl;
+        ID = maxID;
+    }
+    TT
     void Tiered<T, Layer>::drawString(){
-        cout<<"tiered.drawString(): ";
+        printf("tiered.drawString(): \n[");
         size_t realSize = 0;
-        int * s = helper<T, Layer>::drawString((size_t)root, 0, info, size, realSize);
+        T * s = helper<T, Layer>::drawString((size_t)root, 0, info, size, realSize);
         for (int i = 0; i < realSize; ++i) {
             cout<<s[i]<<" ";
         }
-        cout<<endl;
+        printf("]\n");
+    }
+    TT
+    T * Tiered<T, Layer>::RangeQuery(int start, int end, int & lenOfAns){
+        int tvstart = 1;
+        int tvend = size;
+        int realstart = start;
+        int realend = end;
+        if (realstart < tvstart) {
+            realstart = tvstart;
+        }
+        if (realend > tvend) {
+            realend = tvend;
+        }
+        int realnum = realend - realstart + 1;
+        lenOfAns = realnum;
+        if (realnum <= 0) {
+            return nullptr;
+        }
+        T * ans = new T[realnum];
+        size_t ansIdx = 0;
+        helper<T, Layer>::RangeQuery((size_t)root, realstart-1, info, ans, ansIdx, realnum);
+        return ans;
     }
     TT
     void Tiered<T, Layer>::drawTree(){
         printf("tiered.drawTree() [offset, size, id] \n");
+        INODE* r = (INODE*) root;
+        int nodewidth = 0;
+        if (r != nullptr) {
+            nodewidth = r->nodewidth;
+        }
         list<size_t> lst;
         lst.push_back((size_t)root);
         int rank = 0, exp = 0;
-        helper<T, Layer>::drawTree(0, lst, rank, exp);
+        int totalHeight = Layer::height;
+
+        while (!lst.empty()) {
+            size_t cur = lst.front();
+            lst.pop_front();
+            helper<T, Layer>::drawTree(cur, lst, rank, exp, totalHeight, nodewidth);
+
+        }
         cout<<endl;
     }
     TT
     void Tiered<T, Layer>::setTotalHeight(){
         helper<T, Layer>::setTotalHeight();
     }
+    TT
+    void Tiered<T, Layer>::operatorAll() {
+        for (int j = 0; j < 11; ++j) {
+            printf("%d ", Query(j));
+        }
+        printf("\n");
+    }
+    TT
+    void Tiered<T, Layer>::initialize(int * array, size_t length) {
+        for (int i = 0; i < length; ++i) {
+            insert(i+1, array[i]);
+        }
+    }
+    TT
+    void Tiered<T, Layer>::Swap(int start1, int end1, int start2, int end2) {
+        int len = end2-start1+1;
+        int in = 0;
+        T * oldArray = RangeQuery(start1, end2, len);
+        T * newArray = new T[len];
+        for (int k = start2; k <= end2; k ++) {
+            newArray[in] = oldArray[k-start1];
+            in++;
+        }
 
+        for (int k = end1+1; k <= start2-1; k ++) {
+            newArray[in] = oldArray[k-start1];
+            in++;
+        }
+
+        for (int k = start1; k <= end1; k ++) {
+            newArray[in] = oldArray[k-start1];
+            in++;
+        }
+        size_t updateIdx = 0;
+        helper<T, Layer>::updateElems(root, start1, Info{}, newArray, len, updateIdx);
+        delete []oldArray;
+        delete []newArray;
+    }
+    TT
+    void Tiered<T, Layer>::Move(int start, int end, int des) {
+        if (des > size) {
+            des = size;
+        } else if (des >= start && des <= end+1) {
+            return;
+        }
+        if (des < start) {
+            int len = end-des+1;
+            T * oldArray = RangeQuery(des, end, len);
+            T * newArray = new T [len];
+
+            int in = 0;
+            for (int k = start; k <= end; k ++) {
+                newArray[in] = oldArray[k-des];
+                in++;
+            }
+            for (int k = des; k < start; k ++) {
+                newArray[in] = oldArray[k-des];
+                in++;
+            }
+            size_t updateIdx = 0;
+            helper<T, Layer>::updateElems(root, des, Info{}, newArray, len, updateIdx);
+            delete []oldArray;
+            delete []newArray;
+            return;
+        } else {
+            int len = des-start;
+            T * oldArray = RangeQuery(start, des-1, len);
+            T * newArray = new T [len];
+
+            int in = 0;
+            for (int k = end+1; k < des; k ++) {
+                newArray[in] = oldArray[k-start];
+                in++;
+            }
+            for (int k = start; k <= end; k ++) {
+                newArray[in] = oldArray[k-start];
+                in++;
+            }
+            size_t updateIdx = 0;
+            helper<T, Layer>::updateElems(root, start, Info{}, newArray, len, updateIdx);
+            delete []oldArray;
+            delete []newArray;
+            return;
+        }
+    }
+    TT
+    void Tiered<T, Layer>::Reorder(int start, int end, T* newID) {
+        size_t len = end-start+1;
+        size_t updateIdx= 0 ;
+        helper<T, Layer>::updateElems(root, start, Info{}, newID, len, updateIdx);
+        delete []newID;
+    }
 }
