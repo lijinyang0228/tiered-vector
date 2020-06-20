@@ -40,29 +40,36 @@ int main() {
     Seq::Tiered<int, LayerItr<LayerEnd, Layer<4, Layer<4, Layer<4>>>>> tiered;
     tiered.initialize(array, length);
     StandardArray *sa = NewStandardArray(array, length);
-    tiered.drawTree();
     delete []array;
     int NumAnsTV, NumAnsSA, NumAnsDANL;
     int k = 0;
-    for (k = 0; k < 1; ++k) {
+    for (k = 0; k < 500; ++k) {
         int pos = RandomInt(1, length);
         sa->Insert(toInsert, pos);
         tiered.insert(pos, toInsert);
         printf("insert k=%d, pos=%d, toInsert = %d\n", k, pos, toInsert);
+        /*
         printf("after insertion\n");
         tiered.drawTree();
         tiered.drawString();
         sa->PrintArray();
+         */
         
         length++;
         toInsert++;
         AnsTV = tiered.RangeQuery(1, length, NumAnsTV);
-        //tiered.drawString();
+        /*
+        printf("[");
+        for (int i = 0; i < NumAnsTV; ++i) {
+            printf("%d ", AnsTV[i]);
+        }
+        printf("]\n");
+         */
         AnsSA = sa->RangeQuery(1, length, &NumAnsSA);
         //sa->PrintArray();
         // AnsDANL = daNoLimit->RangeQuery(1, length, &NumAnsDANL);
         if (!CompareArray(AnsTV, AnsSA, NumAnsTV)) {
-            cout<< "not equal"<<endl;
+            cout<< "================================= insert not equal================================"<<endl;
             break;
         }
 
@@ -70,7 +77,6 @@ int main() {
         sa->Delete(pos);
         tiered.remove(pos);
         printf("delete %d\n", pos);
-        tiered.drawTree();
 
         length--;
         AnsTV = tiered.RangeQuery(1, length, NumAnsTV);
@@ -79,7 +85,7 @@ int main() {
         //sa->PrintArray();
         // AnsDANL = daNoLimit->RangeQuery(1, length, &NumAnsDANL);
         if (!CompareArray(AnsTV, AnsSA, NumAnsTV)) {
-            cout<< "not equal"<<endl;
+            cout<< "================================= delete not equal================================"<<endl;
             break;
         }
     }
@@ -89,12 +95,41 @@ int main() {
         length++;
         sa->Insert(toInsert, pos);
         tiered.insert(pos, toInsert);
+        printf("insert k=%d, pos=%d, toInsert = %d\n", k, pos, toInsert);
+
+        tiered.drawTree();
+        tiered.drawString();
+        tiered.QueryOneByOne();
+        sa->PrintArray();
 
         AnsTV = tiered.RangeQuery(1, length, NumAnsTV);
         AnsSA = sa->RangeQuery(1, length, &NumAnsSA);
         // AnsDANL = daNoLimit->RangeQuery(1, length, &NumAnsDANL);
         if (!CompareArray(AnsTV, AnsSA, NumAnsTV)) {
-            cout<< "not equal"<<endl;
+            cout<< "================================= insert not equal================================"<<endl;
+            break;
+        }
+
+
+        pos = RandomInt(1, length);
+        sa->Delete(pos);
+        tiered.remove(pos);
+        printf("delete %d\n", pos);
+        tiered.drawTree();
+        //tiered.QueryOneByOne();
+        tiered.drawString();
+        tiered.QueryOneByOne();
+        sa->PrintArray();
+        size_t s = tiered.Query(33);
+
+        length--;
+        AnsTV = tiered.RangeQuery(1, length, NumAnsTV);
+        //tiered.drawString();
+        AnsSA = sa->RangeQuery(1, length, &NumAnsSA);
+        //sa->PrintArray();
+        // AnsDANL = daNoLimit->RangeQuery(1, length, &NumAnsDANL);
+        if (!CompareArray(AnsTV, AnsSA, NumAnsTV)) {
+            cout<< "================================= delete not equal================================"<<endl;
             break;
         }
     }

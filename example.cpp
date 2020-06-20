@@ -35,7 +35,7 @@ int main(int argc, char * argv[])
     clock_t begin = clock();
 
     // Do random insertions
-    for (int i = 0; i < 27; i++) {
+    for (int i = 1; i < MAX; i++) {
         //size_t idx = rand() % (i + 1);
         tiered.insert(i, i + 1);
     }
