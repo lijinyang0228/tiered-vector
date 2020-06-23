@@ -15,7 +15,7 @@
 #include <ctime>
 #include <vector>
 
-#define MAX (27)
+#define MAX (20)
 //# max=262144=64*64*64
 
 
@@ -27,7 +27,6 @@ int main(int argc, char * argv[])
 
     cerr << endl << "Comparing time taken to do " << MAX << " insertions at pseudo random positions in Tiered Vector and STL Vector" << endl << endl;
 
-    srand(0);
     Seq::Tiered<int, LayerItr<LayerEnd, Layer<3, Layer<3, Layer<3>>>>> tiered;
     //Seq::Tiered<int, LayerItr<LayerEnd, Layer<3, Layer<3>>>> tiered;
 
@@ -37,14 +36,14 @@ int main(int argc, char * argv[])
     // Do random insertions
     for (int i = 1; i < MAX; i++) {
         //size_t idx = rand() % (i + 1);
-        tiered.insert(i, i + 1);
+        tiered.insert(i, i );
     }
     tiered.drawTree();
     tiered.drawString();
-    for (int j = 27; j < 216; ++j) {
-        tiered.insert(j, j+1);
-    }
-
+    printf("=======================\n");
+    size_t s = 9;
+    tiered.remove(s);
+    tiered.insert(s, s);
     //tiered.remove(4);
     tiered.drawTree();
     tiered.drawString();

@@ -469,6 +469,7 @@ namespace Seq
                 printf("\n");
             }
         }
+
         static void RangeQuery(size_t addr, size_t startIdx, size_t end, Info info, T * ans, size_t ansStart, size_t ansEnd, int expectedSize) {
             size_t layerCapacity = Layer::capacity * myPow(Layer::twopower, doubleTimes);
             size_t childCapacity = Layer::child::capacity * myPow(Layer::child::twopower, doubleTimes);
@@ -1472,6 +1473,7 @@ namespace Seq
         delete []oldArray;
         delete []newArray;
     }
+
     TT
     void Tiered<T, Layer>::Move(int start, int end, int des) {
         if (des > size) {

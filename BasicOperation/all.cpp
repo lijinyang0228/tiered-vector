@@ -57,9 +57,9 @@ int main() {
     finstant.open(filepath[0], ios::out | ios::in | ios::trunc);
     flog.open(filepath[1], ios::out | ios::in | ios::trunc);
     //ffinal.open(filepath[2], ios::out | ios::in | ios::trunc);
-    finstant<<" ,DA,DANL,ST,DAODP"<<endl;
+    finstant<<" ,SA,TV"<<endl;
 
-    int iniNum = 1000; //0.03 = 30000
+    int iniNum = 10000; //0.03 = 30000
     int danodesize = 50;
     int m = 500;  //for linked list
     int NumOfOutput = 10;
@@ -124,10 +124,7 @@ int main() {
     
     int numUpdate = 0;
     for (int lt = 0; lt < TotalActions; lt++) {
-        printf("a[%d] = %d\n", lt, a[lt]);
-        if (lt == 2) {
-            printf("lt = 2\n");
-        }
+        //printf("a[%d] = %d\n", lt, a[lt]);
         if (lt % 5000 == 0) {
             cout<<"lt = "<<lt;
         }
