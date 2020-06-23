@@ -6,6 +6,7 @@
 #define __USE_GNU
 #endif
 
+
 #include "HeaderFiles/templated_tiered.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,9 +16,9 @@
 #include <ctime>
 #include <vector>
 
+
 #define MAX (20)
 //# max=262144=64*64*64
-
 
 using namespace std;
 using namespace Seq;
