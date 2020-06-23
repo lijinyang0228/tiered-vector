@@ -1,4 +1,4 @@
 all: example
 
-example: example.cpp  HeaderFiles/tiered-vector.h
+example: example.cpp  HeaderFiles/templated_tiered.h
 		g++ -std=c++11 example.cpp -o example
