@@ -28,6 +28,12 @@ size_t layerwidth = Layer::width * myPow(2, doubleTimes);
 size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
 */
 
+/*
+ * change getNextStart() function
+ * try to get result without for loop
+ *
+ */
+
 #ifndef _TEMPLATED_TIERED_H_
 #define _TEMPLATED_TIERED_H_
 
@@ -42,6 +48,11 @@ size_t childwidth = Layer::child::width * myPow(2, doubleTimes);
 #include <stack>
 #include <queue>
 #include <bitset>
+#include <chrono>
+
+typedef std::chrono::high_resolution_clock::time_point TimeVar;
+#define duration(a) std::chrono::duration_cast<std::chrono::nanoseconds>(a).count()
+#define timeNow() std::chrono::high_resolution_clock::now()
 
 #ifdef PPACK
 #define INODE FakeNode<Elem>
@@ -61,6 +72,7 @@ size_t myPow(int x, int p) {
     if (p%2 == 0) return tmp * tmp;
     else return x * tmp * tmp;
 }
+/*
 size_t getNextStart(size_t start1, size_t offset, size_t childCapacity, size_t layerCapacity, size_t childIdx) {
     size_t r = childCapacity * childIdx ;
     if ((start1 + offset) % childCapacity == 0) {
@@ -69,9 +81,12 @@ size_t getNextStart(size_t start1, size_t offset, size_t childCapacity, size_t l
         if (r >= start1 + offset) {
             return r - offset;
         } else {
+            TimeVar time1 = timeNow();
             for (int i = start1 + 1; i < start1 + childCapacity; ++i) {
                 size_t x = (i + offset) % layerCapacity;
                 if ( x / childCapacity == childIdx ) {
+                    TimeVar time2 = timeNow();
+                    printf("time in getNextStart loop is %lld\n", duration(time2-time1));
                     return i;
                 }
             }
@@ -79,6 +94,26 @@ size_t getNextStart(size_t start1, size_t offset, size_t childCapacity, size_t l
         }
     }
 }
+*/
+
+size_t getNextStart(size_t start1, size_t offset, size_t childCapacity, size_t layerCapacity, size_t childIdx) {
+    size_t r = childCapacity * childIdx ;
+    if ((start1 + offset) % childCapacity == 0) {
+        return start1 + childCapacity;
+    } else {
+        if (r >= start1 + offset) {
+            return r - offset;
+        } else {
+            TimeVar time1 = timeNow();
+            size_t r1 = (start1 + offset) % layerCapacity;
+            size_t r2 = r1 % childCapacity;
+            size_t x = childCapacity - r2;
+            return start1 + x;
+        }
+    }
+}
+
+
 size_t doubleTimes = 0;
 double threshold = 0.3;
 static size_t totalHeight;
@@ -486,14 +521,19 @@ namespace Seq
             for (int j = 0; j < cur->size + 1; ++j) {
                 startOff = (start1 + offset) % layerCapacity;
                 childIdx = startOff / childCapacity;
+                TimeVar time1 = timeNow();
                 start2 = getNextStart(start1, offset, childCapacity, layerCapacity, (childIdx + 1) % childwidth);
+                TimeVar time2 = timeNow();
                 if (start2 > end) {
                     start2 = end + 1;
                     flag = true;
                 }
                 len = start2 - start1;
                 auto child = get_child(addr, childIdx);
+                TimeVar time3 = timeNow();
                 helper<T, typename Layer::child>::RangeQuery(child, startOff, startOff+len-1, info, ans, ansStart, ansStart+len-1, len);
+                TimeVar time4 = timeNow();
+                //printf("%d %d %d\n", duration(time2-time1), duration(time3-time2), duration(time4-time3));
                 if (flag) {
                     break;
                 }
@@ -1384,6 +1424,7 @@ namespace Seq
     }
     TT
     T * Tiered<T, Layer>::RangeQuery(int start, int end, int & lenOfAns){
+        TimeVar time1 = timeNow();
         int tvstart = 1;
         int tvend = size;
         int realstart = start;
@@ -1403,7 +1444,9 @@ namespace Seq
         size_t ansIdx = 0;
         // static void RangeQuery(size_t addr, size_t start, size_t end, Info info, T * ans,
         // size_t ansStart, size_t ansEnd, int expectedSize)
+        TimeVar time2 = timeNow();
         helper<T, Layer>::RangeQuery((size_t)root, realstart-1, realend-1, info, ans, 0, realnum-1, realnum);
+        TimeVar time3 = timeNow();
         //printf("top function %lld, %lld\n", duration(time2-time1), duration(time3-time2));
         return ans;
     }

@@ -52,7 +52,7 @@ int* RangeDistributionRandom( int num, int min, int max) {
 
 int main() {
     //var time1, time2 time.Time
-    string filepath[3] = {"Basicinsert.csv", "BasicinsertLog.txt"};
+    string filepath[3] = {"Basicall.csv", "BasicallLog.txt"};
     ofstream finstant, flog, ffinal;
     finstant.open(filepath[0], ios::out | ios::in | ios::trunc);
     flog.open(filepath[1], ios::out | ios::in | ios::trunc);
@@ -63,15 +63,13 @@ int main() {
     int danodesize = 50;
     int m = 500;  //for linked list
     int NumOfOutput = 10;
-    int operations = 10000;
+    int operations = 100000;
     int InsertActions = operations * 2 / 10;
     int DeleteActions = operations * 2 / 10;
     int ReorderActions = operations * 2 / 10;
     int SwapActions = operations * 2 / 10;
     int MoveActions = operations * 2 / 10;
     int TotalActions = DeleteActions + InsertActions + ReorderActions+SwapActions + MoveActions; // 550 000
-    int ComputeInterval = TotalActions / NumOfOutput; // 10%
-    int Interval100 = TotalActions / 100;
     printf("%d, %d, %d, %d, %d\n", InsertActions, DeleteActions, ReorderActions, SwapActions, MoveActions);
     printf("# of operations = %d\n", operations);
     int CurOutputNum = 0;
@@ -125,9 +123,11 @@ int main() {
     int numUpdate = 0;
     for (int lt = 0; lt < TotalActions; lt++) {
         //printf("a[%d] = %d\n", lt, a[lt]);
+        /*
         if (lt % 5000 == 0) {
             cout<<"lt = "<<lt;
         }
+         */
         switch (a[lt]) {
 
             case 2: //insert
@@ -198,24 +198,24 @@ int main() {
             }
             case 6: //move
             {
-                int a[3] = {};
-                for (int & j : a) {
+                int b[3] = {};
+                for (int & j : b) {
                     j = RandomInt(1, NowTotalNum);
                 }
-                sort(a, a+3);
-                if (a[1] == a[2]) {
+                sort(b, b + 3);
+                if (b[1] == b[2]) {
                     continue;
                 }
                 int start1, end1, start2;
 
                 if (RandomInt(1, 10) % 2 == 1) {
-                    start1 = a[0];
-                    end1 = a[1];
-                    start2 = a[2];
+                    start1 = b[0];
+                    end1 = b[1];
+                    start2 = b[2];
                 } else {
-                    start1 = a[1];
-                    end1 = a[2];
-                    start2 = a[0];
+                    start1 = b[1];
+                    end1 = b[2];
+                    start2 = b[0];
                 }
                 sa->Move(start1, end1, start2);
                 tiered.Move(start1, end1, start2);
@@ -242,7 +242,6 @@ int main() {
                 //stree->PrintTree();
                 break;
             }
-
             delete []AnsTV, delete []AnsSA;
 
             numUpdate ++;
@@ -266,6 +265,7 @@ int main() {
             toInsert++;
             NowTotalNum++;
             finstant <<Tsa << ","<< Ttv <<endl;
+            cout <<Tsa << ","<< Ttv <<endl;
         }
         numUpdate++;
     } //for lt <= loopTime
