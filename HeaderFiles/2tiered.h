@@ -104,7 +104,6 @@ size_t getNextStart(size_t start1, size_t offset, size_t childCapacity, size_t l
         if (r >= start1 + offset) {
             return r - offset;
         } else {
-            TimeVar time1 = timeNow();
             size_t r1 = (start1 + offset) % layerCapacity;
             size_t r2 = r1 % childCapacity;
             size_t x = childCapacity - r2;
